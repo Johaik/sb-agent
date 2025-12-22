@@ -1,0 +1,13 @@
+# strands-agents
+python-dotenv
+boto3
+openai
+tavily-python
+fastapi
+uvicorn
+celery
+redis
+sqlalchemy
+psycopg2-binary
+pgvector
+asyncpg
