@@ -1,4 +1,5 @@
 import json
+import structlog
 from celery import chord, chain
 from .celery_app import celery_app
 from ..llm.factory import get_llm_provider
@@ -6,6 +7,8 @@ from ..agents.specialized import EnricherAgent, PlannerAgent, ResearcherAgent, R
 from ..db.database import SessionLocal
 from ..db.models import ResearchReport, ResearchTask
 from ..db.vector import save_chunks
+
+logger = structlog.get_logger()
 
 def clean_json_string(s: str) -> str:
     # Remove markdown code blocks if present
@@ -20,27 +23,35 @@ def clean_json_string(s: str) -> str:
 
 @celery_app.task
 def enrich_idea(idea: str, job_id: str):
-    llm = get_llm_provider("bedrock")
-    agent = EnricherAgent(llm)
-    description = agent.run(idea, invocation_state={"job_id": job_id})
-    
-    # Update DB status
-    db = SessionLocal()
+    logger.info("enrich_idea_started", job_id=job_id)
     try:
-        report = db.query(ResearchReport).filter(ResearchReport.id == job_id).first()
-        if report:
-            report.description = description
-            report.status = "processing"
-            db.commit()
-    except Exception as e:
-        print(f"Error updating DB in enrich_idea: {e}")
-    finally:
-        db.close()
+        llm = get_llm_provider("bedrock")
+        agent = EnricherAgent(llm)
+        description = agent.run(idea, invocation_state={"job_id": job_id})
         
-    return description
+        # Update DB status
+        db = SessionLocal()
+        try:
+            report = db.query(ResearchReport).filter(ResearchReport.id == job_id).first()
+            if report:
+                report.description = description
+                report.status = "processing"
+                db.commit()
+        except Exception as e:
+            logger.error("enrich_idea_db_update_failed", job_id=job_id, error=str(e))
+        finally:
+            db.close()
+            
+        logger.info("enrich_idea_completed", job_id=job_id)
+        return description
+    except Exception as e:
+        logger.error("enrich_idea_failed", job_id=job_id, error=str(e))
+        # We might want to fail the job here, but let's let celery handle retry/failure for now
+        raise e
 
 @celery_app.task
 def plan_research(description: str, job_id: str):
+    logger.info("plan_research_started", job_id=job_id)
     llm = get_llm_provider("bedrock")
     agent = PlannerAgent(llm)
     tasks_json = agent.run(description, invocation_state={"job_id": job_id})
@@ -61,11 +72,13 @@ def plan_research(description: str, job_id: str):
             db.add(new_task)
         db.commit()
         
+        logger.info("plan_research_completed", job_id=job_id, task_count=len(tasks))
+        
         # Trigger Supervisor Loop
         supervisor_loop.delay(job_id)
         
     except Exception as e:
-        print(f"Error parsing plan: {e}")
+        logger.error("plan_research_failed", job_id=job_id, error=str(e))
         # Fallback: create one generic task
         new_task = ResearchTask(
             job_id=job_id,
@@ -86,7 +99,10 @@ def perform_research_task(task_id: str):
     try:
         task = db.query(ResearchTask).filter(ResearchTask.id == task_id).first()
         if not task:
+            logger.warning("perform_research_task_not_found", task_id=task_id)
             return
+        
+        logger.info("perform_research_task_started", task_id=task_id, job_id=str(task.job_id))
         
         llm = get_llm_provider("bedrock")
         agent = ResearcherAgent(llm)
@@ -98,11 +114,13 @@ def perform_research_task(task_id: str):
         task.status = "REVIEW"
         db.commit()
         
+        logger.info("perform_research_task_completed", task_id=task_id)
+        
         # Trigger Supervisor check
         supervisor_loop.delay(str(task.job_id))
         
     except Exception as e:
-        print(f"Error in perform_research_task: {e}")
+        logger.error("perform_research_task_failed", task_id=task_id, error=str(e))
         if task:
             task.status = "REJECTED"
             task.feedback = f"System Error: {str(e)}"
@@ -121,6 +139,8 @@ def review_task(task_id: str):
         if not task:
             return
         
+        logger.info("review_task_started", task_id=task_id, job_id=str(task.job_id))
+        
         llm = get_llm_provider("bedrock")
         critic = CriticAgent(llm)
         
@@ -134,25 +154,24 @@ def review_task(task_id: str):
             
             if approved:
                 task.status = "APPROVED"
+                logger.info("task_approved", task_id=task_id)
             else:
                 task.status = "REJECTED"
                 task.feedback = feedback
+                logger.info("task_rejected", task_id=task_id, feedback=feedback)
                 
             db.commit()
             supervisor_loop.delay(str(task.job_id))
             
         except Exception as e:
-            print(f"Error parsing critique: {e}")
-            # If critic fails, we might get stuck. 
-            # Let's reject it to be safe, or approve if it's a parsing error?
-            # Safer to Reject and ask for retry or manual fix.
+            logger.error("review_task_parsing_failed", task_id=task_id, error=str(e))
             task.status = "REJECTED"
             task.feedback = f"Critic Error: {str(e)}"
             db.commit()
             supervisor_loop.delay(str(task.job_id))
             
     except Exception as e:
-        print(f"Error in review_task: {e}")
+        logger.error("review_task_failed", task_id=task_id, error=str(e))
         if task:
             task.status = "REJECTED" 
             task.feedback = f"System Error in Review: {str(e)}"
@@ -163,6 +182,7 @@ def review_task(task_id: str):
 
 @celery_app.task
 def aggregate_report(job_id: str):
+    logger.info("aggregate_report_started", job_id=job_id)
     db = SessionLocal()
     try:
         # Get all approved tasks
@@ -184,7 +204,7 @@ def aggregate_report(job_id: str):
                 embedding = llm.get_embedding(text)
                 chunks_data.append({"content": text, "embedding": embedding})
             except Exception as e:
-                print(f"Error generating embedding: {e}")
+                logger.warning("embedding_failed", error=str(e))
         
         if chunks_data:
             save_chunks(db, job_id, chunks_data)
@@ -205,9 +225,10 @@ def aggregate_report(job_id: str):
             report.report = final_report
             report.status = "completed"
             db.commit()
+            logger.info("job_completed", job_id=job_id)
             
     except Exception as e:
-        print(f"Error in aggregate_report: {e}")
+        logger.error("aggregate_report_failed", job_id=job_id, error=str(e))
     finally:
         db.close()
 
@@ -222,7 +243,6 @@ def supervisor_loop(job_id: str):
         for task in tasks:
             if task.status == "PENDING" or task.status == "REJECTED":
                 all_approved = False
-                # Fix: Update status immediately to prevent double-dispatch loop
                 task_id = str(task.id)
                 task.status = "RESEARCHING"
                 db.commit()
@@ -230,7 +250,6 @@ def supervisor_loop(job_id: str):
                 
             elif task.status == "REVIEW":
                 all_approved = False
-                # Fix: Update status immediately
                 task_id = str(task.id)
                 task.status = "REVIEWING"
                 db.commit()
@@ -241,7 +260,6 @@ def supervisor_loop(job_id: str):
                 all_approved = False
         
         if all_approved and tasks:
-            # Fix: Check for 'generating' to prevent double aggregation
             report = db.query(ResearchReport).filter(ResearchReport.id == job_id).first()
             if report and report.status != "completed" and report.status != "generating":
                 report.status = "generating"
@@ -249,7 +267,7 @@ def supervisor_loop(job_id: str):
                 aggregate_report.delay(job_id)
                 
     except Exception as e:
-        print(f"Error in supervisor_loop: {e}")
+        logger.error("supervisor_loop_failed", job_id=job_id, error=str(e))
     finally:
         db.close()
 
@@ -257,8 +275,8 @@ def start_research_chain(idea: str, job_id: str):
     # This is called by the API
     # 1. Enrich
     # 2. Plan (which then triggers supervisor loop)
+    logger.info("starting_research_chain", job_id=job_id)
     chain(
         enrich_idea.s(idea, job_id),
         plan_research.s(job_id)
     ).apply_async()
-

@@ -12,3 +12,7 @@ class Config:
     
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/research_db")
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # API Security
+    API_AUTH_ENABLED = os.getenv("API_AUTH_ENABLED", "false").lower() == "true"
+    API_SECRET_KEY = os.getenv("API_SECRET_KEY", "dev-secret-key")

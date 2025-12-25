@@ -11,3 +11,4 @@ sqlalchemy
 psycopg2-binary
 pgvector
 asyncpg
+structlog
