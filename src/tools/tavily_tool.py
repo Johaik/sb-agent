@@ -21,7 +21,8 @@ class TavilyTool(Tool):
             }
         )
 
-    def run(self, query: str) -> Any:
+    def run(self, invocation_state: Dict[str, Any] = None, **kwargs) -> Any:
+        query = kwargs.get('query')
         try:
             return self.client.search(query=query, search_depth="advanced")
         except Exception as e:

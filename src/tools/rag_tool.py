@@ -21,7 +21,12 @@ class RAGSearchTool(Tool):
             }
         )
 
-    def run(self, query: str) -> str:
+    def run(self, invocation_state: Dict[str, Any] = None, **kwargs) -> str:
+        query = kwargs.get('query')
+        
+        # Example: Access job_id from state if needed
+        # current_job_id = invocation_state.get("job_id") if invocation_state else None
+
         # Generate embedding
         try:
             query_embedding = self.llm.get_embedding(query)

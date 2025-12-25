@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any
 from .base import Agent
 from ..llm.base import LLMProvider
 from ..tools.tavily_tool import TavilyTool
@@ -71,11 +71,11 @@ class ResearcherAgent(Agent):
             tools=[tavily, rag]
         )
     
-    def run_with_feedback(self, task: str, feedback: str = None) -> str:
+    def run_with_feedback(self, task: str, feedback: str = None, invocation_state: Dict[str, Any] = None) -> str:
         prompt = task
         if feedback:
             prompt = f"Task: {task}\n\nPREVIOUS FEEDBACK (Must be addressed): {feedback}\n\nPlease improve the research based on this feedback."
-        return self.run(prompt)
+        return self.run(prompt, invocation_state=invocation_state)
 
 class ReporterAgent(Agent):
     def __init__(self, llm: LLMProvider):

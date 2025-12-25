@@ -8,7 +8,7 @@ class Tool(ABC):
         self.parameters = parameters
 
     @abstractmethod
-    def run(self, **kwargs) -> Any:
+    def run(self, invocation_state: Dict[str, Any] = None, **kwargs) -> Any:
         pass
 
     def to_dict(self) -> Dict[str, Any]:
@@ -28,5 +28,7 @@ class FunctionTool(Tool):
         super().__init__(name, description, parameters)
         self.func = func
 
-    def run(self, **kwargs) -> Any:
+    def run(self, invocation_state: Dict[str, Any] = None, **kwargs) -> Any:
+        # Function tools might not support state, or we pass it if the func accepts it
+        # For simplicity, we just pass kwargs here unless the func expects state
         return self.func(**kwargs)

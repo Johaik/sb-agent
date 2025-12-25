@@ -22,7 +22,7 @@ def clean_json_string(s: str) -> str:
 def enrich_idea(idea: str, job_id: str):
     llm = get_llm_provider("bedrock")
     agent = EnricherAgent(llm)
-    description = agent.run(idea)
+    description = agent.run(idea, invocation_state={"job_id": job_id})
     
     # Update DB status
     db = SessionLocal()
@@ -43,7 +43,7 @@ def enrich_idea(idea: str, job_id: str):
 def plan_research(description: str, job_id: str):
     llm = get_llm_provider("bedrock")
     agent = PlannerAgent(llm)
-    tasks_json = agent.run(description)
+    tasks_json = agent.run(description, invocation_state={"job_id": job_id})
     
     db = SessionLocal()
     try:
@@ -92,7 +92,7 @@ def perform_research_task(task_id: str):
         agent = ResearcherAgent(llm)
         
         # Pass feedback if it was rejected previously
-        result = agent.run_with_feedback(task.title, feedback=task.feedback)
+        result = agent.run_with_feedback(task.title, feedback=task.feedback, invocation_state={"job_id": str(task.job_id)})
         
         task.result = result
         task.status = "REVIEW"
@@ -125,7 +125,7 @@ def review_task(task_id: str):
         critic = CriticAgent(llm)
         
         critic_input = f"Task: {task.title}\n\nResult: {task.result}"
-        response_json = critic.run(critic_input)
+        response_json = critic.run(critic_input, invocation_state={"job_id": str(task.job_id)})
         
         try:
             review = json.loads(clean_json_string(response_json))
@@ -192,7 +192,7 @@ def aggregate_report(job_id: str):
         # 2. Generate Final Report
         reporter = ReporterAgent(llm)
         all_content = "\n\n".join([r['result'] for r in results])
-        final_json_str = reporter.run(all_content)
+        final_json_str = reporter.run(all_content, invocation_state={"job_id": job_id})
         
         try:
             final_report = json.loads(clean_json_string(final_json_str))

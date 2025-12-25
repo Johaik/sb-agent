@@ -13,7 +13,7 @@ class Agent:
     def add_message(self, role: str, content: str):
         self.history.append({"role": role, "content": content})
 
-    def run(self, user_input: str) -> str:
+    def run(self, user_input: str, invocation_state: Dict[str, Any] = None) -> str:
         self.add_message("user", user_input)
         
         # Prepare messages: Instructions as system prompt or first user message?
@@ -70,7 +70,7 @@ class Agent:
                 if tool_name in self.tools:
                     try:
                         print(f"[{self.name}] Executing tool {tool_name} with input {tool_input}")
-                        result = self.tools[tool_name].run(**tool_input)
+                        result = self.tools[tool_name].run(invocation_state=invocation_state, **tool_input)
                         tool_output = str(result)
                     except Exception as e:
                         tool_output = f"Error executing tool: {str(e)}"
