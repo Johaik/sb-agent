@@ -66,6 +66,11 @@ class ResearcherAgent(Agent):
             4. If needed, search again with refined queries.
             5. When satisfied, provide a comprehensive answer to the task.
             
+            IMPORTANT:
+            - Explicitly mention the source of your findings in your thought process (e.g., "Found via Web Search" or "Found via RAG").
+            - Do NOT include these source citations in the final answer unless specifically asked.
+            - Focus on gathering deep, technical details and code examples where applicable.
+            
             Use the tools as many times as needed within the turn limit.""",
             llm=llm,
             tools=[tavily, rag]
@@ -81,11 +86,16 @@ class ReporterAgent(Agent):
     def __init__(self, llm: LLMProvider):
         super().__init__(
             name="Reporter",
-            instructions="""You are a research reporter.
+            instructions="""You are a technical research reporter.
             You will receive a set of research findings for various tasks.
-            Your job is to aggregate these findings into a cohesive, well-structured research report.
-            The report should be in JSON format with fields: "summary", "key_findings", "details".
-            Ensure the JSON is valid.""",
+            Your job is to aggregate these findings into a detailed, comprehensive, and well-structured research report.
+            
+            Requirements:
+            1. PRESERVE DETAILS: Do not over-summarize. Keep technical details, code examples, configuration values, and specific metrics.
+            2. STRUCTURE: The report must be in JSON format with fields: "summary", "key_findings", "details".
+            3. "details" field should be a dictionary where keys are section titles and values are extensive descriptions containing the deep research.
+            4. Ensure the JSON is valid.
+            """,
             llm=llm
         )
 

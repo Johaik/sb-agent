@@ -38,10 +38,10 @@ class RAGSearchTool(Tool):
         try:
             results = search_similar_chunks(db, query_embedding, limit=3)
             if not results:
-                return "No relevant information found in the internal database."
+                return "[RAG] No relevant information found in the internal database."
             
             formatted_results = "\n\n".join([f"Content: {r.content}" for r in results])
-            return f"Found the following relevant info:\n{formatted_results}"
+            return f"[RAG] Found the following relevant info:\n{formatted_results}"
         except Exception as e:
             return f"Error searching RAG: {e}"
         finally:

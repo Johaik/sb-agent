@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Optional
 from ..llm.base import LLMProvider
 from ..tools.base import Tool
+from ..db.database import SessionLocal
+from ..db.models import AgentLog
 
 class Agent:
     def __init__(self, name: str, instructions: str, llm: LLMProvider, tools: List[Tool] = []):
@@ -11,10 +13,35 @@ class Agent:
         self.history: List[Dict[str, str]] = []
 
     def add_message(self, role: str, content: str):
+        # Deprecated: use log_event internally
         self.history.append({"role": role, "content": content})
 
+    def log_event(self, role: str, content: str, tool_calls: list = None, invocation_state: dict = None):
+        # Store in memory
+        msg = {"role": role, "content": content}
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+        self.history.append(msg)
+        
+        # Persist to DB if job_id is present
+        if invocation_state and "job_id" in invocation_state:
+            try:
+                db = SessionLocal()
+                log = AgentLog(
+                    job_id=invocation_state["job_id"],
+                    agent_name=self.name,
+                    role=role,
+                    content=content,
+                    tool_calls=tool_calls
+                )
+                db.add(log)
+                db.commit()
+                db.close()
+            except Exception as e:
+                print(f"Failed to log event: {e}")
+
     def run(self, user_input: str, invocation_state: Dict[str, Any] = None) -> str:
-        self.add_message("user", user_input)
+        self.log_event("user", user_input, invocation_state=invocation_state)
         
         # Prepare messages: Instructions as system prompt or first user message?
         # Bedrock/Claude prefers system prompt separate, but our generic interface uses list of messages.
@@ -55,7 +82,7 @@ class Agent:
                 # We'll attach it.
                 assistant_msg["tool_calls"] = tool_calls
             
-            self.history.append(assistant_msg)
+            self.log_event("assistant", content, tool_calls=tool_calls, invocation_state=invocation_state)
             messages_to_send.append(assistant_msg)
 
             if not tool_calls:
@@ -95,7 +122,19 @@ class Agent:
                     "name": tool_name,
                     "content": tool_output
                 }
-                self.history.append(tool_msg)
+                self.log_event("tool", tool_output, invocation_state=invocation_state)
+                # Note: log_event appends to self.history
+                # But we constructed tool_msg manually above to match what we would append.
+                # Actually log_event appends {"role":..., "content":...}, but tool_msg has extra fields.
+                # Let's fix log_event to handle tool fields or just append manually here for memory, but use log_event for DB.
+                # To keep it clean, let's just log to DB here separately if we want exact fields,
+                # or better: rely on log_event for both but we need to pass extra fields to log_event if we want them in history.
+                
+                # Simplified approach: Use log_event for DB persistence mostly.
+                # Re-aligning history:
+                self.history[-1]["tool_call_id"] = tool_id
+                self.history[-1]["name"] = tool_name
+                
                 messages_to_send.append(tool_msg)
                 
         return "Max turns reached."
