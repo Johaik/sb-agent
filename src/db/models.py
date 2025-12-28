@@ -13,6 +13,7 @@ class ResearchReport(Base):
     description = Column(Text, nullable=True)
     status = Column(String, default="pending")  # pending, processing, completed, failed
     report = Column(JSON, nullable=True)
+    final_critique = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -33,6 +34,9 @@ class ResearchTask(Base):
     title = Column(String, nullable=False)
     status = Column(String, default="pending")  # pending, researching, review, approved, rejected, failed
     result = Column(Text, nullable=True)
+    hypotheses = Column(JSON, nullable=True)
+    evidence_rating = Column(JSON, nullable=True)
+    contradictions = Column(JSON, nullable=True)
     feedback = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

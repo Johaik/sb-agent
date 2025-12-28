@@ -1,49 +1,36 @@
-from typing import Dict, Any, List
-from .base import Tool
+from typing import Dict, Any
+from strands.tools import tool
 from ..db.database import SessionLocal
 from ..db.vector import search_similar_chunks
-from ..llm.base import LLMProvider
+from ..llm.factory import get_llm_provider
 
-class RAGSearchTool(Tool):
-    def __init__(self, llm_provider: LLMProvider):
-        self.llm = llm_provider
-        super().__init__(
-            name="rag_search",
-            description="Search the internal research database for relevant information.",
-            parameters={
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to find relevant research chunks."
-                    }
-                },
-                "required": ["query"]
-            }
-        )
-
-    def run(self, invocation_state: Dict[str, Any] = None, **kwargs) -> str:
-        query = kwargs.get('query')
+@tool
+def rag_search(query: str) -> str:
+    """Search the internal research database for relevant information.
+    
+    Args:
+        query: The search query to find relevant research chunks.
         
-        # Example: Access job_id from state if needed
-        # current_job_id = invocation_state.get("job_id") if invocation_state else None
-
-        # Generate embedding
-        try:
-            query_embedding = self.llm.get_embedding(query)
-        except Exception as e:
-            return f"Error generating embedding: {e}"
+    Returns:
+        String containing relevant information from the internal database.
+    """
+    # Generate embedding using Bedrock
+    try:
+        llm = get_llm_provider("bedrock")
+        query_embedding = llm.get_embedding(query)
+    except Exception as e:
+        return f"Error generating embedding: {e}"
+    
+    # Search DB
+    db = SessionLocal()
+    try:
+        results = search_similar_chunks(db, query_embedding, limit=3)
+        if not results:
+            return "[RAG] No relevant information found in the internal database."
         
-        # Search DB
-        db = SessionLocal()
-        try:
-            results = search_similar_chunks(db, query_embedding, limit=3)
-            if not results:
-                return "[RAG] No relevant information found in the internal database."
-            
-            formatted_results = "\n\n".join([f"Content: {r.content}" for r in results])
-            return f"[RAG] Found the following relevant info:\n{formatted_results}"
-        except Exception as e:
-            return f"Error searching RAG: {e}"
-        finally:
-            db.close()
-
+        formatted_results = "\n\n".join([f"Content: {r.content}" for r in results])
+        return f"[RAG] Found the following relevant info:\n{formatted_results}"
+    except Exception as e:
+        return f"Error searching RAG: {e}"
+    finally:
+        db.close()

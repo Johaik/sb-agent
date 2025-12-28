@@ -68,12 +68,12 @@ class BedrockProvider(LLMProvider):
                 
         return system_prompt.strip(), bedrock_messages
 
-    def generate(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def generate(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, max_tokens: int = 4000) -> Dict[str, Any]:
         system_prompt, bedrock_messages = self._convert_messages(messages)
         
         body = {
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 2000,
+            "max_tokens": max_tokens,
             "messages": bedrock_messages,
         }
         
