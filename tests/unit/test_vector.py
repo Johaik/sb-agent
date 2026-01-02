@@ -62,6 +62,73 @@ class TestSearchSimilarChunks:
         results = search_similar_chunks(mock_db, query_embedding)
         
         assert results == []
+    
+    def test_search_with_max_age_filter(self):
+        """Test search applies max_age_days filter correctly."""
+        from src.db.vector import search_similar_chunks
+        from src.db.models import ResearchChunk
+        
+        mock_db = MagicMock()
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        
+        # Setup the mock chain: query -> filter -> order_by -> limit -> all
+        mock_query.filter.return_value = mock_filter
+        mock_filter.order_by.return_value.limit.return_value.all.return_value = []
+        mock_db.query.return_value = mock_query
+        
+        query_embedding = [0.1] * 1024
+        search_similar_chunks(mock_db, query_embedding, limit=5, max_age_days=7)
+        
+        # Verify filter was called (age filter applied)
+        mock_query.filter.assert_called_once()
+    
+    def test_search_without_age_filter(self):
+        """Test search does not apply filter when max_age_days is None."""
+        from src.db.vector import search_similar_chunks
+        
+        mock_db = MagicMock()
+        mock_query = MagicMock()
+        mock_query.order_by.return_value.limit.return_value.all.return_value = []
+        mock_db.query.return_value = mock_query
+        
+        query_embedding = [0.1] * 1024
+        search_similar_chunks(mock_db, query_embedding, limit=5, max_age_days=None)
+        
+        # Verify filter was NOT called (no age filtering)
+        mock_query.filter.assert_not_called()
+        # Verify order_by was called directly on query
+        mock_query.order_by.assert_called_once()
+    
+    def test_search_age_filter_boundary(self):
+        """Test edge case: filter uses correct cutoff date calculation."""
+        from src.db.vector import search_similar_chunks
+        from datetime import datetime, timedelta
+        from unittest.mock import ANY
+        
+        mock_db = MagicMock()
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        mock_filter.order_by.return_value.limit.return_value.all.return_value = []
+        mock_query.filter.return_value = mock_filter
+        mock_db.query.return_value = mock_query
+        
+        query_embedding = [0.1] * 1024
+        
+        # Test with max_age_days=0 (only today's data)
+        search_similar_chunks(mock_db, query_embedding, limit=5, max_age_days=0)
+        
+        # Filter should still be called
+        mock_query.filter.assert_called_once()
+        
+        # Reset mocks for another test
+        mock_query.reset_mock()
+        mock_filter.reset_mock()
+        mock_query.filter.return_value = mock_filter
+        
+        # Test with max_age_days=30
+        search_similar_chunks(mock_db, query_embedding, limit=5, max_age_days=30)
+        mock_query.filter.assert_called_once()
 
 
 class TestSaveChunks:

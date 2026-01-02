@@ -1,13 +1,32 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from datetime import datetime, timedelta
+from typing import Optional
 from .models import ResearchChunk
 import json
 
-def search_similar_chunks(db: Session, query_embedding: list, limit: int = 5):
+def search_similar_chunks(db: Session, query_embedding: list, limit: int = 5, max_age_days: Optional[int] = None):
     """
     Search for similar chunks using cosine similarity.
+    
+    Args:
+        db: Database session
+        query_embedding: Vector embedding for similarity search
+        limit: Maximum number of results to return
+        max_age_days: Optional maximum age in days. If specified, only chunks
+                      created within this many days will be returned.
+    
+    Returns:
+        List of ResearchChunk objects ordered by similarity
     """
-    results = db.query(ResearchChunk).order_by(
+    query = db.query(ResearchChunk)
+    
+    # Apply age filter if specified
+    if max_age_days is not None:
+        cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+        query = query.filter(ResearchChunk.created_at >= cutoff_date)
+    
+    results = query.order_by(
         ResearchChunk.embedding.cosine_distance(query_embedding)
     ).limit(limit).all()
     

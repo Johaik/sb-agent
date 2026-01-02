@@ -148,6 +148,21 @@ class ResearcherAgent(BaseStrandsAgent):
             4. If needed, search again with refined queries.
             5. When satisfied, provide a comprehensive answer to the task.
             
+            DATA FRESHNESS AWARENESS:
+            - RAG search results include age metadata (e.g., "Retrieved: 2025-12-15, 18 days ago").
+            - For TIME-SENSITIVE topics (current events, latest versions, recent developments):
+              Use rag_search with max_age_days parameter (e.g., max_age_days=7 for weekly news).
+            - For HISTORICAL or EVERGREEN topics (concepts, fundamentals, established facts):
+              Omit max_age_days to search all available data.
+            - ALWAYS consider data freshness when evaluating RAG results:
+              * If data is old and topic is time-sensitive, prefer tavily_search for current info.
+              * If RAG data is recent or topic is not time-sensitive, RAG results are reliable.
+            - Example freshness guidelines:
+              * Breaking news/current events: max_age_days=3
+              * Technology updates/versions: max_age_days=30
+              * Industry trends: max_age_days=90
+              * Historical facts/concepts: no limit needed
+            
             IMPORTANT:
             - Explicitly mention the source of your findings in your thought process (e.g., "Found via Web Search" or "Found via RAG").
             - Do NOT include these source citations in the final answer unless specifically asked.
